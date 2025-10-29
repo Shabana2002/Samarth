@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Samarth Analytics</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f0f2f5; }
+        h1 { color: #333; }
+        form { margin-bottom: 20px; }
+        input[type="text"] { width: 400px; padding: 8px; }
+        button { padding: 8px 16px; }
+        pre { background-color: #fff; padding: 15px; border-radius: 5px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    </style>
+</head>
+<body>
+    <h1>Samarth Analytics Q&A</h1>
+    <form method="POST" action="/ask">
+        <input type="text" name="question" placeholder="Ask something..." required>
+        <button type="submit">Ask</button>
+    </form>
+
+    {% if answer %}
+    <h2>Answer:</h2>
+    <pre>{{ answer }}</pre>
+    {% endif %}
+
+    {% if sources %}
+    <h3>Sources:</h3>
+    <ul>
+        {% for src in sources %}
+        <li>{{ src }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</body>
+</html>
