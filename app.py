@@ -1,4 +1,5 @@
 import json
+import os
 from flask import Flask, render_template, request
 from enhanced_handler import handle_question
 
@@ -26,4 +27,6 @@ def ask():
         return render_template('index.html', answer=f"Error: {str(e)}", sources=[])
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port, debug=False)
+
