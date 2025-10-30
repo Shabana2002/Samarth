@@ -2,17 +2,64 @@
 <html>
 <head>
     <title>Samarth Q&A System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+        input[type=text] {
+            padding: 10px;
+            font-size: 16px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 20px;
+            border-radius: 5px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+    </style>
     <script>
         async function askQuestion() {
-            const question = document.getElementById('question').value;
-            const response = await fetch('/ask', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({question})
-            });
-            const data = await response.json();
-            document.getElementById('answer').innerText = JSON.stringify(data, null, 2);
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                alert("Please type a question!");
+                return;
+            }
+
+            document.getElementById('answer').innerText = "Loading...";
+
+            try {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({question})
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server responded with status ${response.status}`);
+                }
+
+                const data = await response.json();
+                document.getElementById('answer').innerText = JSON.stringify(data, null, 2);
+            } catch (error) {
+                document.getElementById('answer').innerText = `Error: ${error.message}`;
+            }
         }
+
+        // Optional: Allow Enter key to submit
+        document.addEventListener("DOMContentLoaded", () => {
+            const input = document.getElementById('question');
+            input.addEventListener("keypress", function(e) {
+                if (e.key === "Enter") {
+                    askQuestion();
+                }
+            });
+        });
     </script>
 </head>
 <body>
