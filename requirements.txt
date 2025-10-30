@@ -1,8 +1,4 @@
 Flask
-gunicorn
 pandas
 requests
-rapidfuzz
-numpy
-scipy
-matplotlib
+python-dotenv

@@ -1,26 +1,20 @@
 import requests
-import pandas as pd
+from config import DATA_GOV_API_KEY, RAINFALL_RESOURCE_ID, CROP_RESOURCE_ID
 
-# Your API keys and resource IDs
-DATA_GOV_API_KEY = "579b464db66ec23bdd000001b99df47d66174b7771f8db787f44753c"
-RAINFALL_RESOURCE_ID = "6c05cd1b-ed59-40c2-bc31-e314f39c6971"
-
-# Build API URL
-url = f"https://api.data.gov.in/resource/{RAINFALL_RESOURCE_ID}?api-key={DATA_GOV_API_KEY}&format=json&limit=10"
-
-try:
-    resp = requests.get(url)
-    resp.raise_for_status()  # Raise error for HTTP issues
-
-    data = resp.json()
-    records = data.get("records", [])
-
-    if records:
-        df = pd.DataFrame(records)
-        print("[INFO] Live API data loaded successfully!")
-        print(df.head())
+def test_api(resource_id):
+    url = f"https://api.data.gov.in/resource/{resource_id}?api-key={DATA_GOV_API_KEY}&format=json&offset=0&limit=5"
+    r = requests.get(url)
+    r.raise_for_status()
+    data = r.json()
+    print(f"DEBUG: API response keys for {resource_id}: {list(data.keys())}")
+    # print first item if 'records' or 'data' exists
+    if 'records' in data:
+        print("First record:", data['records'][0])
+    elif 'data' in data:
+        print("First record:", data['data'][0])
     else:
-        print("[WARN] API returned no records.")
+        print("Full data:", data)
 
-except requests.exceptions.RequestException as e:
-    print(f"[ERROR] Failed to fetch live API data: {e}")
+# Test both resources
+test_api(RAINFALL_RESOURCE_ID)
+test_api(CROP_RESOURCE_ID)
