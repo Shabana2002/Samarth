@@ -78,49 +78,6 @@ def compare_states_average_rainfall(state_x, state_y, years=None):
     return {"answer": {"state_x_avg": float(avg_x), "state_y_avg": float(avg_y)}, "sources": sources}
 
 # -------------------------------
-# NEW: Top M crops per state
-# -------------------------------
-def get_top_crops(state_x, state_y, crop_type=None, years=None, top_m=3):
-    df, sources = _load_with_fallback(CROP_RESOURCE_ID, LOCAL_CROP_CSV)
-    cols = {c.lower(): c for c in df.columns}
-    state_col = cols.get("state_name")
-    crop_col = cols.get("crop")
-    prod_col = cols.get("production_")
-    year_col = cols.get("crop_year")
-
-    df[state_col] = df[state_col].astype(str).str.strip().str.lower()
-    df[crop_col] = df[crop_col].astype(str).str.strip().str.lower()
-    df[prod_col] = pd.to_numeric(df[prod_col], errors="coerce")
-
-    if years:
-        df = df[df[year_col].isin(years)]
-
-    results = {}
-    for st in [state_x, state_y]:
-        st_clean = st.lower()
-        sub = df[df[state_col] == st_clean]
-        if crop_type:
-            sub = sub[sub[crop_col].str.contains(crop_type.lower(), na=False)]
-        top = sub.groupby(crop_col)[prod_col].sum().nlargest(top_m)
-        results[st] = top.to_dict()
-
-    return {"answer": results, "sources": sources}
-
-# -------------------------------
-# Combine Rainfall + Top Crops
-# -------------------------------
-def compare_rainfall_and_top_crops(state_x, state_y, crop_type=None, years=None, top_m=3):
-    rain = compare_states_average_rainfall(state_x, state_y, years)
-    crops = get_top_crops(state_x, state_y, crop_type, years, top_m)
-    return {
-        "answer": {
-            "rainfall": rain["answer"],
-            "top_crops": crops["answer"]
-        },
-        "sources": rain["sources"] + crops["sources"]
-    }
-
-# -------------------------------
 # Compare highest & lowest district crop production
 # -------------------------------
 def compare_districts(crop, state1, state2):
@@ -194,111 +151,100 @@ def policy_advice(crop_a, crop_b, state, years=None, top_n=3):
     elif prodB > prodA:
         args.append(f"{crop_b} has higher total production ({prodB:.0f}) than {crop_a} ({prodA:.0f}) in {state}.")
 
-    if areaA and areaB:
-        if areaA > areaB:
-            args.append(f"{crop_a} occupies more cultivated area ({areaA:.0f}) than {crop_b} ({areaB:.0f}).")
-        elif areaB > areaA:
-            args.append(f"{crop_b} occupies more cultivated area ({areaB:.0f}) than {crop_a} ({areaA:.0f}).")
+    if areaA > areaB:
+        args.append(f"{crop_a} occupies more area ({areaA:.0f}) than {crop_b} ({areaB:.0f}) in {state}.")
+    elif areaB > areaA:
+        args.append(f"{crop_b} occupies more area ({areaB:.0f}) than {crop_a} ({areaA:.0f}) in {state}.")
 
-    if trends.get("A_growth") is not None and trends.get("B_growth") is not None:
-        ga, gb = trends["A_growth"], trends["B_growth"]
-        if ga > gb:
-            args.append(f"{crop_a} shows stronger average year-on-year growth ({ga:.2%}) than {crop_b} ({gb:.2%}).")
+    if trends.get("A_growth") and trends.get("B_growth"):
+        if trends["A_growth"] > trends["B_growth"]:
+            args.append(f"{crop_a} shows stronger year-on-year growth than {crop_b}.")
         else:
-            args.append(f"{crop_b} shows stronger average year-on-year growth ({gb:.2%}) than {crop_a} ({ga:.2%}).")
+            args.append(f"{crop_b} shows stronger year-on-year growth than {crop_a}.")
 
-    return {"answer": args[:top_n], "sources": sources}
+    return {"answer": {"advice": args}, "sources": sources}
 
 # -------------------------------
-# NEW: Crop trend + climate correlation
+# Crop trend analysis with rainfall
 # -------------------------------
-def analyze_crop_trend(crop, region, years=None):
-    crop_df, csrc = _load_with_fallback(CROP_RESOURCE_ID, LOCAL_CROP_CSV)
-    rain_df, rsrc = _load_with_fallback(RAINFALL_RESOURCE_ID, LOCAL_RAINFALL_CSV)
+def analyze_crop_trend(crop, state=None):
+    df_crop, sources_crop = _load_with_fallback(CROP_RESOURCE_ID, LOCAL_CROP_CSV)
+    df_rain, sources_rain = _load_with_fallback(RAINFALL_RESOURCE_ID, LOCAL_RAINFALL_CSV)
 
-    # normalize
-    crop_df.columns = [c.lower() for c in crop_df.columns]
-    rain_df.columns = [c.lower() for c in rain_df.columns]
+    cols_crop = {c.lower(): c for c in df_crop.columns}
+    cols_rain = {c.lower(): c for c in df_rain.columns}
 
-    crop_df = crop_df.rename(columns={"state_name": "state", "crop_year": "year"})
-    rain_df = rain_df.rename(columns={"state_name": "state"})
-    crop_df["state"] = crop_df["state"].str.lower().str.strip()
-    rain_df["state"] = rain_df["state"].str.lower().str.strip()
-    crop_df["production_"] = pd.to_numeric(crop_df["production_"], errors="coerce")
-    rain_df["rainfall"] = pd.to_numeric(rain_df.get("rainfall") or rain_df.get("avg_rainfall"), errors="coerce")
+    crop_col = cols_crop.get("crop")
+    state_col_crop = cols_crop.get("state_name")
+    prod_col = cols_crop.get("production_")
+    year_col_crop = cols_crop.get("crop_year")
 
-    # filter
-    region_clean = region.lower()
-    crop_clean = crop.lower()
-    csub = crop_df[(crop_df["state"] == region_clean) & (crop_df["crop"] == crop_clean)]
-    rsub = rain_df[rain_df["state"] == region_clean]
+    state_col_rain = cols_rain.get("state") or cols_rain.get("state_name")
+    year_col_rain = cols_rain.get("year") or cols_rain.get("crop_year")
+    rain_col = cols_rain.get("avg_rainfall") or cols_rain.get("rainfall")
 
-    # merge & aggregate
-    merged = pd.merge(csub, rsub, on=["state", "year"], how="inner")
-    trend = csub.groupby("year")["production_"].sum().reset_index()
+    df_crop[prod_col] = pd.to_numeric(df_crop[prod_col], errors="coerce")
+    df_rain[rain_col] = pd.to_numeric(df_rain[rain_col], errors="coerce")
 
-    if len(trend) < 2:
-        return {"answer": "Insufficient data for trend analysis.", "sources": csrc + rsrc}
+    df_crop = df_crop[df_crop[crop_col].str.lower() == crop.lower()]
+    if state:
+        df_crop = df_crop[df_crop[state_col_crop].str.lower() == state.lower()]
+        df_rain = df_rain[df_rain[state_col_rain].str.lower() == state.lower()]
 
-    correlation = merged["production_"].corr(merged["rainfall"])
-    direction = "increasing" if trend["production_"].iloc[-1] > trend["production_"].iloc[0] else "decreasing"
+    df_merge = pd.merge(
+        df_crop[[year_col_crop, prod_col, state_col_crop]],
+        df_rain[[year_col_rain, rain_col, state_col_rain]],
+        left_on=[year_col_crop, state_col_crop],
+        right_on=[year_col_rain, state_col_rain],
+        how="inner"
+    )
+
+    if df_merge.empty:
+        return {"answer": {"trend": None, "rain_correlation": None}, "sources": sources_crop + sources_rain}
+
+    correlation = df_merge[prod_col].corr(df_merge[rain_col])
+
+    trend = df_merge.groupby(year_col_crop)[prod_col].sum().sort_index().tolist()
+    years = df_merge[year_col_crop].sort_values().unique().tolist()
 
     return {
-        "answer": {
-            "trend_direction": direction,
-            "correlation_with_rainfall": float(correlation) if correlation else None,
-            "years_covered": int(trend["year"].nunique())
-        },
-        "sources": csrc + rsrc
+        "answer": {"years": years, "production_trend": trend, "rain_correlation": correlation},
+        "sources": sources_crop + sources_rain
     }
 
 # -------------------------------
-# Handle incoming questions
+# Main NLP handler
 # -------------------------------
-STATE_LIST = [
-    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand",
-    "Karnataka", "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur",
-    "Meghalaya", "Mizoram", "Nagaland", "Odisha", "Punjab",
-    "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
-    "Uttar Pradesh", "Uttarakhand", "West Bengal",
-    "Andaman and Nicobar Islands", "Chandigarh", "Delhi",
-    "Jammu and Kashmir", "Ladakh", "Puducherry"
-]
+def handle_question(question: str):
+    question = question.lower()
 
+    # Rainfall comparison
+    if "rainfall" in question and "average" in question and "between" in question:
+        match = re.findall(r"between\s+([\w\s]+?)\s+and\s+([\w\s]+)", question)
+        if match:
+            state_x, state_y = match[0]
+            return compare_states_average_rainfall(state_x, state_y)
 
-def handle_question(question):
-    question_lower = question.lower()
-    intent = None
+    # District comparison
+    if "highest" in question and "lowest" in question and "production" in question:
+        match = re.findall(r"for\s+([\w\s]+)\s+in\s+([\w\s]+)\s+and\s+([\w\s]+)", question)
+        if match:
+            crop, state1, state2 = match[0]
+            return compare_districts(crop, state1, state2)
 
-    if "rainfall" in question_lower and "crop" in question_lower:
-        intent = "rainfall_and_crops"
-    elif "rainfall" in question_lower:
-        intent = "rainfall_comparison"
-    elif "production" in question_lower and "district" in question_lower:
-        intent = "crop_comparison"
-    elif "policy" in question_lower or "better to cultivate" in question_lower:
-        intent = "policy_advice"
-    elif "trend" in question_lower or "analyze" in question_lower:
-        intent = "trend_analysis"
+    # Policy advice
+    if "policy" in question or "advise" in question:
+        match = re.findall(r"(?:between|for)\s+([\w\s]+)\s+and\s+([\w\s]+)\s+in\s+([\w\s]+)", question)
+        if match:
+            crop_a, crop_b, state = match[0]
+            return policy_advice(crop_a, crop_b, state)
 
-    # extract entities
-    states = [s for s in STATE_LIST if s.lower() in question_lower]
-    years = [int(y) for y in re.findall(r"\b(20\d{2})\b", question)]
-    crop_match = re.findall(r"(?:of|for)\s+([\w\s]+?)(?:\s+and\s+([\w\s]+))?(?:\?|$)", question_lower)
-    crop1 = crop_match[0][0].strip() if crop_match else None
-    crop2 = crop_match[0][1].strip() if crop_match and crop_match[0][1] else None
+    # Crop trend
+    if "trend" in question or "correlation" in question:
+        match = re.findall(r"trend\s+of\s+([\w\s]+)(?:\s+in\s+([\w\s]+))?", question)
+        if match:
+            crop, state = match[0]
+            state = state.strip() if state else None
+            return analyze_crop_trend(crop, state)
 
-    # route logic
-    if intent == "rainfall_and_crops" and len(states) >= 2:
-        return compare_rainfall_and_top_crops(states[0], states[1], crop1, years)
-    elif intent == "rainfall_comparison" and len(states) >= 2:
-        return compare_states_average_rainfall(states[0], states[1], years)
-    elif intent == "crop_comparison" and len(states) >= 2 and crop1:
-        return compare_districts(crop1, states[0], states[1])
-    elif intent == "policy_advice" and len(states) >= 1 and crop1 and crop2:
-        return policy_advice(crop1, crop2, states[0], years)
-    elif intent == "trend_analysis" and len(states) >= 1 and crop1:
-        return analyze_crop_trend(crop1, states[0], years)
-    else:
-        return {"answer": "Sorry, I could not understand the question or missing info.", "sources": []}
+    return {"answer": None, "sources": []}

@@ -39,5 +39,4 @@ def best_match(query: str, choices, score_cutoff: int = 70):
         return None, 0
 
     match_clean, score, _ = res
-    # ✅ Corrected return logic
     return (rev.get(match_clean), score) if score >= score_cutoff else (None, score)
