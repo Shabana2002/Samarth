@@ -1,42 +1,29 @@
-import re
-from rapidfuzz import process, fuzz
+from difflib import get_close_matches
 
-def clean_name(s: str) -> str:
-    """Normalize crop/state names by removing punctuation, parentheses, and case."""
-    if not s:
-        return ''
-    s = s.lower()
-    s = re.sub(r"\(.*?\)", "", s)        # remove parentheses and contents
-    s = re.sub(r"[^a-z0-9\s]", "", s)    # remove non-alphanumeric
-    s = re.sub(r"\s+", " ", s).strip()   # collapse whitespace
-    return s
+# -------------------------------
+# Clean a string (state or crop) for comparison
+# -------------------------------
+def clean_name(name):
+    if not name:
+        return ""
+    return name.strip().lower()
 
-def best_match(query: str, choices, score_cutoff: int = 70):
+# -------------------------------
+# Return the best match from a list of options
+# -------------------------------
+def best_match(query, options, cutoff=0.6):
     """
-    Return best fuzzy match from a list of choices using RapidFuzz.
-    Returns a tuple: (best_match_string or None, match_score)
+    Returns the best fuzzy match from a list of options.
+    :param query: string to match
+    :param options: list of strings
+    :param cutoff: similarity threshold (0-1)
+    :return: best match or None
     """
-    if not query or not choices:
-        return None, 0
-
-    q = clean_name(query)
-
-    # Pre-clean and deduplicate choices
-    cleaned_choices = {choice: clean_name(str(choice)) for choice in choices if choice}
-    rev = {}
-    for orig, c in cleaned_choices.items():
-        if c not in rev:
-            rev[c] = orig
-    cleaned_list = list(rev.keys())
-
-    # Shortcut: exact match
-    if q in rev:
-        return rev[q], 100
-
-    # Perform fuzzy matching
-    res = process.extractOne(q, cleaned_list, scorer=fuzz.WRatio)
-    if not res:
-        return None, 0
-
-    match_clean, score, _ = res
-    return (rev.get(match_clean), score) if score >= score_cutoff else (None, score)
+    query = clean_name(query)
+    options_clean = [clean_name(opt) for opt in options]
+    matches = get_close_matches(query, options_clean, n=1, cutoff=cutoff)
+    if matches:
+        # Return the original option from the list
+        idx = options_clean.index(matches[0])
+        return options[idx], True
+    return None, False
