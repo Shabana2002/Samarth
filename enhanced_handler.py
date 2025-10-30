@@ -229,7 +229,7 @@ def handle_question(question: str):
     if "highest" in question and "lowest" in question and "production" in question:
         match = re.findall(r"for\s+([\w\s]+)\s+in\s+([\w\s]+)\s+and\s+([\w\s]+)", question)
         if match:
-            crop, state1, state2 = match[0]
+            crop, state1, state2 = match[0]a
             return compare_districts(crop, state1, state2)
 
     # Policy advice
